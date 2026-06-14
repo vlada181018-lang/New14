@@ -5,11 +5,19 @@ from __future__ import annotations
 
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
 from typing import Any
 
 from solution_catalog import DEFAULT_DB_PATH, SolutionOption, ensure_database, list_solutions
 from tech_assignment_generator import DEFAULT_DATA, merge_data, write_docx
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+except ModuleNotFoundError:  # pragma: no cover - depends on OS packages
+    tk = None  # type: ignore[assignment]
+    filedialog = None  # type: ignore[assignment]
+    messagebox = None  # type: ignore[assignment]
+    ttk = None  # type: ignore[assignment]
 
 
 FIELD_DEFINITIONS = [
@@ -256,6 +264,12 @@ class TechnicalAssignmentApp:
 
 
 def main() -> None:
+    if tk is None:
+        raise SystemExit(
+            "Tkinter is not installed. Install the OS package for Tkinter "
+            "(for example, python3-tk on Debian/Ubuntu) and run again."
+        )
+
     root = tk.Tk()
     app = TechnicalAssignmentApp(root)
     root.mainloop()
