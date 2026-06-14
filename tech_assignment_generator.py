@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Iterable
 from xml.sax.saxutils import escape
 
+from solution_catalog import DEFAULT_DB_PATH, ensure_database, get_solution, list_solutions
+
 
 DEFAULT_DATA: dict[str, Any] = {
     "project_name": "Информационная система учета заявок",
@@ -147,15 +149,21 @@ def load_config(path: Path) -> dict[str, Any]:
     return data
 
 
-def merge_data(custom_data: dict[str, Any]) -> dict[str, Any]:
+def merge_data(*custom_sources: dict[str, Any]) -> dict[str, Any]:
     data = copy.deepcopy(DEFAULT_DATA)
-    custom_sections = custom_data.pop("sections", None)
-    data.update(custom_data)
 
-    if custom_sections is not None:
-        if not isinstance(custom_sections, dict):
-            raise ValueError("Field 'sections' must be a JSON object.")
-        data["sections"] = custom_sections
+    for custom_data in custom_sources:
+        if not custom_data:
+            continue
+
+        custom_copy = copy.deepcopy(custom_data)
+        custom_sections = custom_copy.pop("sections", None)
+        data.update(custom_copy)
+
+        if custom_sections is not None:
+            if not isinstance(custom_sections, dict):
+                raise ValueError("Field 'sections' must be a JSON object.")
+            data.setdefault("sections", {}).update(custom_sections)
 
     return data
 
@@ -457,6 +465,31 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Write a sample JSON config to the given path and exit.",
     )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=DEFAULT_DB_PATH,
+        help="Path to the SQLite catalog with solution templates.",
+    )
+    parser.add_argument(
+        "--init-db",
+        action="store_true",
+        help="Create and seed the SQLite catalog with default solutions.",
+    )
+    parser.add_argument(
+        "--reset-db",
+        action="store_true",
+        help="Recreate the SQLite catalog before seeding default solutions.",
+    )
+    parser.add_argument(
+        "--list-solutions",
+        action="store_true",
+        help="Print available solution templates from the SQLite catalog.",
+    )
+    parser.add_argument(
+        "--solution-id",
+        help="Use a solution template from the SQLite catalog.",
+    )
     return parser.parse_args()
 
 
@@ -468,8 +501,24 @@ def main() -> None:
         print(f"Sample config written to {args.init_sample}")
         return
 
+    if args.init_db or args.reset_db:
+        ensure_database(args.db, reset=args.reset_db)
+        print(f"Solution catalog is ready at {args.db}")
+        if not args.list_solutions and not args.solution_id and not args.config:
+            return
+
+    if args.list_solutions:
+        for solution in list_solutions(args.db):
+            print(f"{solution.id}\t{solution.name}\t{solution.description}")
+        return
+
+    solution_data: dict[str, Any] = {}
+    if args.solution_id:
+        solution = get_solution(args.db, args.solution_id)
+        solution_data = solution.payload
+
     custom_data = load_config(args.config) if args.config else {}
-    data = merge_data(custom_data)
+    data = merge_data(solution_data, custom_data)
     write_docx(args.output, data)
     print(f"Technical assignment written to {args.output}")
 
